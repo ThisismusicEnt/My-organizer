@@ -1,0 +1,847 @@
+!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Nebula Notes — Notion-style Editor</title>
+<meta name="theme-color" content="#0b0f14" />
+<style>
+  :root{
+    --bg:#0b0f14;           /* deep black-blue */
+    --bg-elev:#0f1522;      /* elevated surface */
+    --bg-elev-2:#121a2a;
+    --muted:#7a869a;
+    --muted-2:#97a2b3;
+    --text:#e8edf7;
+    --accent:#7aa2ff;
+    --accent-2:#5d8cff;
+    --ok:#4cd964;
+    --warn:#ffb020;
+    --danger:#ff5d5d;
+    --ring:rgba(122,162,255,.5);
+    --border:#1d2840;
+    --shadow:0 10px 30px rgba(0,0,0,.35);
+    --radius:14px;
+    --radius-sm:10px;
+    --radius-xs:8px;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,Arial,"Noto Sans",sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:linear-gradient(180deg,var(--bg),#0a0e18 60%,#080b14);
+    color:var(--text);font:14.5px/1.5 var(--font);
+    -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+  }
+  #app{display:grid;grid-template-columns:280px 1fr;min-height:100vh}
+  /* Sidebar */
+  aside{
+    border-right:1px solid var(--border);
+    background:linear-gradient(180deg,var(--bg-elev),var(--bg-elev-2));
+    position:sticky;top:0;height:100vh;overflow:auto;
+  }
+  .brand{display:flex;align-items:center;gap:10px;padding:16px 16px 12px;font-weight:700}
+  .brand .logo{width:22px;height:22px;border-radius:6px;background:conic-gradient(from 180deg at 50% 50%,#2f3c6b,#1f2b52,#293c7a,#2f3c6b);box-shadow:inset 0 0 20px rgba(122,162,255,.35),0 0 18px rgba(122,162,255,.15)}
+  .search{padding:0 12px 10px}
+  .search input{
+    width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--border);
+    background:#0b1220;color:var(--text);outline:none;
+  }
+  .search input:focus{box-shadow:0 0 0 3px var(--ring);border-color:#273659}
+  .side-section-title{padding:8px 16px;color:var(--muted);font-size:12px;letter-spacing:.35px}
+  .page-list{padding:6px}
+  .page-item{
+    display:flex;align-items:center;gap:10px;padding:8px 10px;margin:4px 6px;border-radius:10px;cursor:pointer;
+  }
+  .page-item:hover{background:#0d1423}
+  .page-item.active{background:#121a2a;border:1px solid #1c2942}
+  .page-icon{width:22px;height:22px;border-radius:6px;background:#0b1220;display:grid;place-items:center;font-size:14px}
+  .page-title{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .page-actions{display:flex;gap:6px;opacity:.6}
+  .page-actions button{background:transparent;border:0;color:var(--muted);cursor:pointer}
+  .sidebar-cta{padding:10px 12px}
+  .btn{
+    display:inline-flex;align-items:center;gap:8px;padding:10px 12px;border-radius:10px;border:1px solid var(--border);
+    background:#0b1220;color:var(--text);cursor:pointer;
+  }
+  .btn:hover{border-color:#2c3c61}
+  /* Main */
+  main{min-width:0}
+  header.topbar{
+    position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);
+    background:linear-gradient(180deg,var(--bg-elev),rgba(15,21,34,.85));backdrop-filter:blur(10px);
+  }
+  .icon-btn{background:#0b1220;border:1px solid var(--border);border-radius:10px;padding:8px;cursor:pointer;color:var(--muted)}
+  .icon-btn:hover{color:var(--text);border-color:#2c3c61}
+  .title-wrap{display:flex;align-items:center;gap:10px;min-width:0}
+  #pageIcon{
+    width:28px;height:28px;border-radius:8px;background:#0b1220;display:grid;place-items:center;outline:none;border:1px dashed #25345a;color:#9db0d0;
+  }
+  #pageIcon:empty:before{content:"+";opacity:.6}
+  #pageTitle{
+    font-size:20px;font-weight:700;outline:none;padding:6px 8px;border-radius:8px;min-width:80px;max-width:60vw;
+  }
+  #pageTitle:empty:before{content:"Untitled";color:#5f6d84}
+  .spacer{flex:1}
+  .toolbar{display:flex;gap:8px}
+  .tag{font-size:12px;color:#9ab1d7;border:1px solid #223157;background:#0b1220;border-radius:999px;padding:4px 8px}
+  /* Editor */
+#editor{max-width:860px;margin:16px auto;padding:10px 16px 160px}
+  .block{display:flex;gap:10px;align-items:flex-start;padding:4px 6px;border-radius:10px;position:relative}
+  .block:hover{background:#0d1423}
+  .handle{user-select:none;cursor:grab;opacity:.4;padding:3px 4px}
+  .handle:hover{opacity:.9}
+  .dot{width:8px;height:8px;border-radius:50%;background:#263352;margin:8px 2px 0}
+  .content[contenteditable="true"]{outline:none}
+  .b-paragraph .content{min-height:26px}
+  .b-h1 .content{font-size:28px;font-weight:800;letter-spacing:.1px}
+  .b-h2 .content{font-size:22px;font-weight:700}
+  .b-h3 .content{font-size:18px;font-weight:700}
+  .b-quote{border-left:3px solid #2a3a63;padding-left:12px;opacity:.9}
+  .b-divider{height:18px}
+  .b-divider .content{width:100%;height:1px;background:#1b2742;border-radius:999px;margin:10px 0}
+  .b-todo input{margin:6px 2px 0 2px;transform:scale(1.1)}
+  .b-todo .content{min-height:24px}
+  .b-bulleted .dot{margin-top:.8em}
+  .b-code {width:100%}
+  .b-code .content{
+    font-family:var(--mono);background:#0a111f;border:1px solid #1d2a47;border-radius:10px;padding:10px;white-space:pre-wrap;min-height:32px;
+  }
+  .b-image img{max-width:100%;border-radius:12px;border:1px solid #1d2a47}
+  .hint{color:#6d7b93;font-size:12px}
+  /* Slash menu */
+  #slashMenu{
+    position:absolute;z-index:10;background:#0b1220;border:1px solid #243355;border-radius:12px;min-width:220px;box-shadow:var(--shadow);display:none;
+  }
+  #slashMenu .itm{display:flex;gap:10px;padding:10px 12px;cursor:pointer}
+  #slashMenu .itm:hover{background:#0e1524}
+  #slashMenu .itm .k{opacity:.6;margin-left:auto}
+  /* Command palette */
+  #palette{
+    position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.45);z-index:20;
+  }
+  .pal{
+    width:min(680px,92vw);border-radius:14px;background:#0b1220;border:1px solid #25345a;box-shadow:var(--shadow);overflow:hidden;
+  }
+  .pal .hdr{padding:10px;border-bottom:1px solid #203155}
+  .pal input{width:100%;padding:12px 14px;border:1px solid #223157;border-radius:10px;background:#0a111f;color:var(--text);outline:none}
+  .pal .list{max-height:48vh;overflow:auto}
+  .pal .row{padding:10px 14px;border-top:1px solid #121a2a;cursor:pointer}
+  .pal .row:hover{background:#0e1524}
+  /* Footer/status & FAB */
+  #statusbar{position:fixed;left:280px;right:0;bottom:0;background:linear-gradient(180deg,transparent,#0a0e18 40%);padding:12px 18px;color:#7e8aa2;border-top:1px solid #141e33}
+  #fab{
+    position:fixed;right:18px;bottom:18px;width:54px;height:54px;border-radius:14px;background:radial-gradient(120% 120% at 20% 20%,#7aa2ff,#5d8cff 60%,#2c3c7f);
+    display:grid;place-items:center;cursor:pointer;border:1px solid #2c3c7f;box-shadow:0 12px 26px rgba(45,90,200,.35);
+  }
+  #fab:hover{filter:brightness(1.05)}
+  /* Backlinks */
+  #backlinks{max-width:860px;margin:0 auto 60px;border-top:1px dashed #203156;padding:16px 16px 40px}
+  #backlinks h4{margin:8px 0 6px;color:#9db0d0}
+  /* Responsive */
+  @media (max-width:980px){
+    #app{grid-template-columns:0 1fr}
+    aside{position:fixed;z-index:30;left:0;top:0;width:82vw;transform:translateX(-100%);transition:transform .25s}
+    aside.open{transform:translateX(0)}
+    #statusbar{left:0}
+  }
+  /* Focus mode */
+  body.focus aside{display:none}
+  body.focus #statusbar{left:0}
+  /* Small utility */
+  .hidden{display:none !important}
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <div class="brand"><div class="logo"></div> Nebula Notes</div>
+    <div class="search"><input id="pageSearch" placeholder="Search pages…" /></div>
+    <div class="side-section-title">Pages</div>
+    <div id="pageList" class="page-list"></div>
+    <div class="sidebar-cta">
+      <button id="newPage" class="btn">＋ New page</button>
+    </div>
+    <div class="side-section-title">Templates</div>
+    <div class="page-list" id="templates">
+      <div class="page-item" data-template="journal"><div class="page-icon">📓</div><div class="page-title">Daily Journal</div></div>
+      <div class="page-item" data-template="meeting"><div class="page-icon">🗒️</div><div class="page-title">Meeting Notes</div></div>
+      <div class="page-item" data-template="brief"><div class="page-icon">🧩</div><div class="page-title">Project Brief</div></div>
+    </div>
+    <div class="side-section-title">Trash</div>
+    <div id="trashList" class="page-list"></div>
+  </aside>
+  <main>
+    <header class="topbar">
+      <button id="toggleSidebar" class="icon-btn" title="Toggle sidebar">☰</button>
+      <div class="title-wrap">
+        <div id="pageIcon" contenteditable="true" title="Click to set an emoji icon"></div>
+        <div id="pageTitle" contenteditable="true" spellcheck="false"></div>
+        <span class="tag" id="modifiedTag" title="Autosave status">Saved</span>
+      </div>
+      <div class="spacer"></div>
+      <div class="toolbar">
+        <button id="cmd" class="icon-btn" title="Command Palette (Ctrl/Cmd+K)">⌘K</button>
+        <button id="exportMD" class="icon-btn" title="Export Markdown">.md</button>
+        <button id="exportJSON" class="icon-btn" title="Export JSON">.json</button>
+        <label class="icon-btn" title="Import JSON">
+          ⤒
+          <input id="importJSON" type="file" accept="application/json" hidden />
+        </label>
+        <button id="focus" class="icon-btn" title="Focus mode (Ctrl/Cmd+Shift+F)">◎</button>
+      </div>
+    </header>
+
+    <section id="editor" tabindex="0" aria-label="Document editor"></section>
+
+    <div id="backlinks" class="hidden">
+      <h4>Backlinks</h4>
+      <div id="backlinksList" class="hint">No backlinks yet. Mention with [[Page Title]].</div>
+    </div>
+
+    <footer id="statusbar">
+      <span id="statusText">Ready.</span> • Words: <span id="wordCount">0</span> • Updated <span id="saveTime">–</span>
+    </footer>
+  </main>
+</div>
+
+<!-- Floating Quick Capture -->
+<button id="fab" title="Quick capture (new page)">＋</button>
+
+<!-- Slash Menu -->
+<div id="slashMenu" role="menu" aria-label="Slash menu"></div>
+
+<!-- Command Palette -->
+<div id="palette">
+  <div class="pal">
+    <div class="hdr"><input id="palInput" placeholder="Type a command or page name…" autofocus /></div>
+    <div id="palList" class="list"></div>
+  </div>
+</div>
+
+<script>
+/* ========= Core Data & Utilities ========= */
+const STORAGE_KEY = "nebula.notes.v1";
+const DEFAULT_PAGE_ICON = "🟦";
+
+const $ = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+
+const uid = (p="id") => p+"_"+Math.random().toString(36).slice(2,8)+"_"+Date.now().toString(36);
+
+const nowISO = () => new Date().toISOString();
+
+const download = (name, text, mime="text/plain") => {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], {type:mime}));
+  a.download = name;
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
+};
+
+/* ========= App State ========= */
+let db = { order:[], pages:{}, trash:[] };
+let currentId = null;
+let isSaving = false;
+let saveTimer = null;
+let slashPos = {x:0,y:0,blockId:null};
+let lastSnapshotTimer = null;
+
+/* ========= Persistence ========= */
+function loadDB(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw){ db = JSON.parse(raw); }
+    else { seedExample(); }
+  }catch(e){ console.warn("Load failed; seeding.", e); seedExample(); }
+}
+function saveDB(debounced=true){
+  const commit = ()=>{
+    isSaving = true;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+    isSaving = false;
+    setStatus("Saved ✓");
+    $("#modifiedTag").textContent = "Saved";
+    $("#saveTime").textContent = new Date().toLocaleTimeString();
+  };
+  $("#modifiedTag").textContent = "Saving…";
+  if(debounced){
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(commit, 350);
+  }else commit();
+}
+function snapshotPage(page){
+  // keep lightweight history (last 10)
+  const copy = JSON.parse(JSON.stringify({title:page.title, icon:page.icon, blocks:page.blocks, ts:Date.now()}));
+  page.history = page.history || [];
+  page.history.unshift(copy);
+  page.history = page.history.slice(0,10);
+}
+function scheduleSnapshot(){
+  clearTimeout(lastSnapshotTimer);
+  lastSnapshotTimer = setTimeout(()=>{
+    const p = db.pages[currentId]; if(!p) return;
+    snapshotPage(p); saveDB(true);
+  }, 4000);
+}
+
+/* ========= Seeding ========= */
+function seedExample(){
+  const id = uid("page");
+  db.order = [id];
+  db.pages[id] = {
+    id, title:"Welcome to Nebula Notes", icon:"✨",
+    createdAt: nowISO(), updatedAt: nowISO(),
+    starred:false, history:[],
+    blocks:[
+      b("h1","Nebula Notes — Notion-style editor"),
+      b("paragraph","Press / for commands • Enter to add blocks • Drag the ⋮⋮ handle to reorder."),
+      b("divider",""),
+      b("h2","Quick tips"),
+      b("bulleted","Type [[Page Title]] to create backlinks."),
+      b("bulleted","Ctrl/Cmd+K opens Command Palette."),
+      b("bulleted","Ctrl/Cmd+Shift+F toggles Focus mode."),
+      b("bulleted","Ctrl/Cmd+S saves (it also autosaves)."),
+      b("todo","Ship the MVP 🚀",false),
+      b("quote","“Make it work, then make it pretty, then make it fast.”"),
+      b("code","// try a code block\nfunction hello(){\n  console.log('Hi Puff!');\n}"),
+      b("image","https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=1600&q=80"),
+    ]
+  };
+}
+/* ========= Blocks ========= */
+function b(type="paragraph", text="", checked=false){
+  return { id:uid("blk"), type, text, checked };
+}
+function blockEl(block){
+  const wrap = document.createElement("div");
+  wrap.className = `block b-${block.type}`;
+  wrap.draggable = true;
+  wrap.dataset.id = block.id;
+
+  const handle = document.createElement("div");
+  handle.className = "handle";
+  handle.title = "Drag to reorder";
+  handle.textContent = "⋮⋮";
+  wrap.appendChild(handle);
+
+  if(block.type==="bulleted"){
+    const dot = document.createElement("div");
+    dot.className = "dot";
+    wrap.appendChild(dot);
+  }else if(block.type==="todo"){
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = !!block.checked;
+    cb.addEventListener("input", ()=>{
+      const p = db.pages[currentId]; const b = p.blocks.find(x=>x.id===block.id);
+      b.checked = cb.checked; p.updatedAt=nowISO(); saveDB(true); scheduleSnapshot(); refreshWordCount();
+    });
+    wrap.appendChild(cb);
+  }else if(block.type==="divider"){
+    const cnt = document.createElement("div");
+    cnt.className="content"; wrap.appendChild(cnt);
+    return wrap;
+  }else if(block.type==="image"){
+    const cnt = document.createElement("div");
+    cnt.className="content";
+    cnt.innerHTML = block.text ? `<img src="${block.text}" alt="Image block">` : `<span class="hint">Paste an image URL and press Enter</span>`;
+    wrap.appendChild(cnt);
+    return wrap;
+  }
+
+  const content = document.createElement("div");
+  content.className = "content";
+  content.contentEditable = "true";
+  content.spellcheck = true;
+  if(block.type==="code"){ content.spellcheck = false; content.style.whiteSpace='pre-wrap'; content.style.fontFamily='var(--mono)'; }
+  content.textContent = block.text || "";
+  content.placeholder = "Type '/' for commands";
+  wrap.appendChild(content);
+
+  /* Key handling */
+  content.addEventListener("keydown", (e)=>{
+    const atStart = window.getSelection && (()=>{ 
+      const sel = window.getSelection(); if(!sel || sel.rangeCount===0) return false;
+      const r = sel.getRangeAt(0); return r.startOffset===0 && r.endOffset===0 && r.startContainer===content.firstChild; 
+    })();
+
+    // Slash menu
+    if(e.key === "/" && !e.shiftKey && !e.ctrlKey && !e.metaKey){
+      openSlashMenuNear(content, block.id);
+      return; // allow slash to appear visually in menu; we prevent default inside openSlashMenuNear
+    }
+
+    // Enter behaviors
+    if(e.key==="Enter" && !e.shiftKey && block.type!=="code"){
+      e.preventDefault();
+      const p = db.pages[currentId];
+      const idx = p.blocks.findIndex(x=>x.id===block.id);
+      const after = b("paragraph","");
+      p.blocks.splice(idx+1,0,after);
+      p.updatedAt=nowISO();
+      saveDB(true); scheduleSnapshot(); renderEditor();
+      focusBlock(after.id);
+      return;
+    }
+    if(e.key==="Enter" && block.type==="code"){
+      // allow newline inside code block
+      scheduleSnapshot();
+      return;
+    }
+
+    // Backspace at start converts/removes
+    if(e.key==="Backspace" && atStart){
+      const p = db.pages[currentId];
+      const idx = p.blocks.findIndex(x=>x.id===block.id);
+      if(block.type.startsWith("h")){ setBlockType(block.id,"paragraph"); e.preventDefault(); return; }
+      if(idx>0){
+        e.preventDefault();
+        // merge with previous
+        const prev = p.blocks[idx-1];
+        if(prev.type==="divider"||prev.type==="image"){ /* do nothing */ }
+        else{
+          const prevEl = getBlockEl(prev.id)?.querySelector(".content");
+          const caretPos = prev.text.length;
+          prev.text += block.text || "";
+          p.blocks.splice(idx,1);
+          p.updatedAt=nowISO(); saveDB(true); renderEditor();
+          focusBlock(prev.id, caretPos);
+        }
+      }
+    }
+  });
+
+  content.addEventListener("input", ()=>{
+    const p = db.pages[currentId]; const b = p.blocks.find(x=>x.id===block.id);
+    b.text = content.textContent; p.updatedAt=nowISO(); markDirty(); saveDB(true); scheduleSnapshot(); refreshWordCount(); refreshBacklinks();
+  });
+
+  // Drag & drop
+  wrap.addEventListener("dragstart", e=>{
+    e.dataTransfer.setData("text/plain", block.id);
+    e.dataTransfer.effectAllowed = "move";
+  });
+  wrap.addEventListener("dragover", e=>{ e.preventDefault(); wrap.style.background="#0e1524"; });
+  wrap.addEventListener("dragleave", ()=>{ wrap.style.background=""; });
+  wrap.addEventListener("drop", e=>{
+    e.preventDefault(); wrap.style.background="";
+    const fromId = e.dataTransfer.getData("text/plain");
+    reorderBlock(fromId, block.id);
+  });
+
+  return wrap;
+}
+
+function getBlockEl(blockId){ return $(`.block[data-id="${blockId}"]`); }
+
+function setBlockType(blockId, type){
+  const p = db.pages[currentId]; if(!p) return;
+  const blk = p.blocks.find(x=>x.id===blockId); if(!blk) return;
+  blk.type = type;
+  if(type==="divider"){ blk.text=""; }
+  if(type==="image" && blk.text && !isURL(blk.text)){ blk.text=""; }
+  p.updatedAt=nowISO(); saveDB(true); renderEditor(); focusBlock(blockId);
+}
+
+function reorderBlock(fromId, toId){
+  if(fromId===toId) return;
+  const p = db.pages[currentId];
+  const fromIdx = p.blocks.findIndex(b=>b.id===fromId);
+  const toIdx = p.blocks.findIndex(b=>b.id===toId);
+  const [moved] = p.blocks.splice(fromIdx,1);
+  p.blocks.splice(toIdx,0,moved);
+  p.updatedAt=nowISO(); saveDB(true); renderEditor();
+}
+
+/* ========= Editor Rendering ========= */
+function renderEditor(){
+  const p = db.pages[currentId]; if(!p) return;
+  $("#editor").innerHTML = "";
+  p.blocks.forEach(blk=> $("#editor").appendChild(blockEl(blk)));
+  $("#pageTitle").textContent = p.title || "";
+  $("#pageIcon").textContent = p.icon || DEFAULT_PAGE_ICON;
+  $("#saveTime").textContent = new Date(p.updatedAt).toLocaleTimeString();
+  refreshWordCount();
+  refreshBacklinks();
+}
+
+function focusBlock(blockId, caretAtEnd=null){
+  const el = getBlockEl(blockId);
+  const content = el?.querySelector(".content");
+  if(content){
+    content.focus();
+    const sel = window.getSelection(); const r = document.createRange();
+    const len = content.textContent.length;
+    const p = Math.min(caretAtEnd ?? len, len);
+    r.setStart(content.firstChild||content, p);
+    r.collapse(true); sel.removeAllRanges(); sel.addRange(r);
+  }
+}
+function markDirty(){ $("#modifiedTag").textContent="Saving…"; setStatus("Editing…"); }
+
+/* ========= Sidebar & Pages ========= */
+function renderSidebar(){
+  const list = $("#pageList"); list.innerHTML="";
+  const q = $("#pageSearch").value.toLowerCase();
+  db.order.forEach(id=>{
+    const p = db.pages[id]; if(!p) return;
+    if(q && !`${p.title} ${p.icon}`.toLowerCase().includes(q)) return;
+    const item = document.createElement("div");
+    item.className = "page-item"+(id===currentId?" active":"");
+    item.draggable = true;
+    item.dataset.id = id;
+    const icon = document.createElement("div"); icon.className="page-icon"; icon.textContent = p.icon || DEFAULT_PAGE_ICON;
+    const title = document.createElement("div"); title.className="page-title"; title.textContent = p.title || "Untitled";
+    const actions = document.createElement("div"); actions.className="page-actions";
+    actions.innerHTML = `<button title="Duplicate">⎘</button><button title="Delete">🗑</button>`;
+    item.append(icon,title,actions);
+    item.addEventListener("click", (e)=>{ if(e.target.closest(".page-actions")) return; openPage(id); closeSidebarOnMobile(); });
+    actions.children[0].addEventListener("click", (e)=>{ e.stopPropagation(); duplicatePage(id); });
+    actions.children[1].addEventListener("click", (e)=>{ e.stopPropagation(); trashPage(id); });
+    // drag reorder
+    item.addEventListener("dragstart", (e)=>{ e.dataTransfer.setData("text/plain", id); });
+    item.addEventListener("dragover", e=>{ e.preventDefault(); item.style.background="#0e1524";});
+    item.addEventListener("dragleave", ()=> item.style.background="");
+    item.addEventListener("drop", e=>{
+      e.preventDefault(); item.style.background="";
+      const from = e.dataTransfer.getData("text/plain");
+      if(from===id) return;
+      const oi = db.order.indexOf(from), ti = db.order.indexOf(id);
+      db.order.splice(oi,1); db.order.splice(ti,0,from);
+      saveDB(true); renderSidebar();
+    });
+    list.appendChild(item);
+  });
+
+  // Trash
+  const trash = $("#trashList"); trash.innerHTML="";
+  db.trash.forEach(id=>{
+    const p = db.pages[id]; if(!p) return;
+    const item = document.createElement("div");
+    item.className="page-item"; item.dataset.id=id;
+    item.innerHTML = `<div class="page-icon">🗑</div><div class="page-title">${p.title||"Untitled"}</div>
+      <div class="page-actions"><button title="Restore">⤴</button><button title="Erase">✖</button></div>`;
+    item.querySelector('[title="Restore"]').onclick = ()=> restorePage(id);
+    item.querySelector('[title="Erase"]').onclick = ()=> erasePage(id);
+    trash.appendChild(item);
+  });
+}
+
+function openPage(id){
+  currentId = id;
+  renderSidebar();
+  renderEditor();
+}
+
+function newPage(template=null){
+  const id = uid("page");
+  const title = template ? template.title : "Untitled";
+  const icon = template ? template.icon : DEFAULT_PAGE_ICON;
+  const blocks = template ? template.blocks : [b("h1","Untitled"), b("paragraph","")];
+  db.pages[id] = { id, title, icon, blocks, createdAt:nowISO(), updatedAt:nowISO(), history:[] };
+  db.order.unshift(id);
+  saveDB(false); renderSidebar(); openPage(id);
+  // focus title
+  setTimeout(()=> $("#pageTitle").focus(), 10);
+}
+function duplicatePage(id){
+  const p = db.pages[id]; if(!p) return;
+  const copyId = uid("page");
+  const copy = JSON.parse(JSON.stringify(p));
+  copy.id = copyId; copy.title = p.title + " (Copy)"; copy.createdAt=nowISO(); copy.updatedAt=nowISO();
+  db.pages[copyId] = copy; db.order.unshift(copyId);
+  saveDB(true); renderSidebar();
+}
+function trashPage(id){
+  if(currentId===id){
+    // switch to another page
+    const next = db.order.find(x=>x!==id);
+    currentId = next || null;
+  }
+  db.order = db.order.filter(x=>x!==id);
+  db.trash.unshift(id);
+  saveDB(true); renderSidebar(); renderEditor();
+}
+function restorePage(id){
+  db.trash = db.trash.filter(x=>x!==id);
+  db.order.unshift(id);
+  saveDB(true); renderSidebar();
+}
+function erasePage(id){
+  delete db.pages[id];
+  db.trash = db.trash.filter(x=>x!==id);
+  saveDB(true); renderSidebar();
+}
+
+/* ========= Slash Menu ========= */
+const blockTypes = [
+  {t:"h1", label:"Heading 1", hint:"#"},
+  {t:"h2", label:"Heading 2", hint:"##"},
+  {t:"h3", label:"Heading 3", hint:"###"},
+  {t:"paragraph", label:"Paragraph", hint:"↵"},
+  {t:"todo", label:"To-do", hint:"[ ]"},
+  {t:"bulleted", label:"Bulleted list", hint:"•"},
+  {t:"quote", label:"Quote", hint:">"},
+  {t:"divider", label:"Divider", hint:"—"},
+  {t:"code", label:"Code", hint:"```"},
+  {t:"image", label:"Image (URL)", hint:"🖼"},
+];
+
+function openSlashMenuNear(el, blockId){
+  const r = window.getSelection()?.getRangeAt(0);
+  if(r){ const rect = r.getBoundingClientRect(); slashPos = {x:rect.left, y:rect.bottom + 6, blockId}; }
+  const menu = $("#slashMenu"); menu.innerHTML="";
+  blockTypes.forEach(x=>{
+    const it = document.createElement("div");
+    it.className="itm"; it.dataset.type=x.t;
+    it.innerHTML = `<div>${x.label}</div><div class="k">${x.hint}</div>`;
+    it.onclick = ()=>{
+      setBlockType(blockId, x.t);
+      if(x.t==="image"){
+        const url = prompt("Paste image URL"); if(url){
+          const p = db.pages[currentId]; const b = p.blocks.find(z=>z.id===blockId);
+          b.text = url; p.updatedAt=nowISO(); saveDB(true); renderEditor();
+        }
+      }
+      closeSlashMenu();
+    };
+    menu.appendChild(it);
+  });
+  const x = Math.min(slashPos.x, window.innerWidth-260);
+  menu.style.left = x+"px"; menu.style.top = (slashPos.y + window.scrollY)+"px";
+  menu.style.display = "block";
+  // Prevent literal "/" insertion
+  document.execCommand && document.execCommand("undo");
+  setTimeout(()=>document.addEventListener("click", onSlashAway, {once:true}), 0);
+}
+function closeSlashMenu(){ $("#slashMenu").style.display="none"; }
+function onSlashAway(e){ if(!e.target.closest("#slashMenu")) closeSlashMenu(); }
+
+/* ========= Backlinks ========= */
+function refreshBacklinks(){
+  const p = db.pages[currentId]; if(!p) return;
+  const title = (p.title||"").trim();
+  if(!title){ $("#backlinks").classList.add("hidden"); return; }
+  const refs = [];
+  for(const id of db.order){
+    if(id===currentId) continue;
+    const pg = db.pages[id]; if(!pg) continue;
+    const all = (pg.blocks||[]).map(b=>b.text||"").join("\n");
+    const matches = [...all.matchAll(/\[([^]+)\]\]/g)].map(m=>m[1].trim());
+    if(matches.some(n=>n.toLowerCase()===title.toLowerCase())){
+      refs.push({id:pg.id,title:pg.title});
+    }
+  }
+  const cont = $("#backlinks"); const list = $("#backlinksList");
+  if(refs.length===0){ cont.classList.add("hidden"); list.innerHTML="No backlinks yet. Mention with [[Page Title]]."; }
+  else{
+    cont.classList.remove("hidden");
+    list.innerHTML = refs.map(r=>`<div class="row"><a href="#" data-open="${r.id}">${escapeHtml(r.title||"Untitled")}</a></div>`).join("");
+    list.querySelectorAll("[data-open]").forEach(a=>a.onclick=(e)=>{ e.preventDefault(); openPage(a.dataset.open); });
+  }
+}
+
+/* ========= Markdown Export ========= */
+function toMarkdown(page){
+  const esc = s => s.replaceAll("<","&lt;").replaceAll(">","&gt;");
+  const lines = [];
+  for(const bl of page.blocks){
+    const t = bl.text||"";
+    switch(bl.type){
+      case "h1": lines.push("# "+t); break;
+      case "h2": lines.push("## "+t); break;
+      case "h3": lines.push("### "+t); break;
+      case "paragraph": lines.push(t); break;
+      case "todo": lines.push(`- [${bl.checked?"x":" "}] ${t}`); break;
+      case "bulleted": lines.push(`- ${t}`); break;
+      case "quote": lines.push(`> ${t}`); break;
+      case "divider": lines.push(`---`); break;
+      case "code": lines.push("```", t, "```"); break;
+      case "image": lines.push(`![image](${t})`); break;
+    }
+  }
+  return `# ${page.icon||""} ${page.title||"Untitled"}\n\n`+lines.join("\n");
+}
+
+/* ========= Command Palette ========= */
+const paletteActions = [
+  {id:"new", label:"New page", run:()=>newPage()},
+  {id:"dup", label:"Duplicate current page", run:()=>duplicatePage(currentId)},
+  {id:"del", label:"Move current page to Trash", run:()=>trashPage(currentId)},
+  {id:"focus", label:"Toggle Focus mode", run:()=>toggleFocus()},
+  {id:"export-md", label:"Export current page as Markdown", run:()=>exportMarkdown()},
+  {id:"export-json", label:"Export all as JSON", run:()=>exportJSON()},
+];
+
+function openPalette(){
+  $("#palette").style.display="flex";
+  const input = $("#palInput");
+  input.value=""; input.focus(); renderPalList("");
+}
+function closePalette(){ $("#palette").style.display="none"; }
+function renderPalList(q){
+  const list = $("#palList"); list.innerHTML="";
+  const ql = q.toLowerCase();
+  // pages
+  db.order.forEach(id=>{
+    const p = db.pages[id]; if(!p) return;
+    if(ql && !`${p.title} ${p.icon}`.toLowerCase().includes(ql)) return;
+    const row = document.createElement("div");
+    row.className="row";
+    row.textContent = `${p.icon||"🗒️"} ${p.title||"Untitled"}`;
+    row.onclick = ()=>{ openPage(id); closePalette(); };
+    list.appendChild(row);
+  });
+  // actions
+  paletteActions.filter(a=>!ql || a.label.toLowerCase().includes(ql)).forEach(a=>{
+    const row = document.createElement("div"); row.className="row";
+    row.textContent = `⚙ ${a.label}`; row.onclick = ()=>{ a.run(); closePalette(); };
+    list.appendChild(row);
+  });
+}
+/* ========= Helpers ========= */
+function setStatus(txt){ $("#statusText").textContent = txt; }
+function refreshWordCount(){
+  const p = db.pages[currentId]; if(!p) return;
+  const words = p.blocks.map(b=>b.text||"").join(" ").trim().split(/\s+/).filter(Boolean).length;
+  $("#wordCount").textContent = words;
+}
+function isURL(s){ try{ new URL(s); return true; }catch{ return false; } }
+function escapeHtml(s){ return s.replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
+function toggleFocus(){ document.body.classList.toggle("focus"); }
+
+/* ========= Import/Export ========= */
+function exportMarkdown(){
+  const p = db.pages[currentId]; if(!p) return;
+  download((p.title||"Untitled").replace(/[^\w\-]+/g,"_")+".md", toMarkdown(p), "text/markdown");
+}
+function exportJSON(){
+  download("nebula-notes.json", JSON.stringify(db,null,2), "application/json");
+}
+function importJSON(file){
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    try{
+      const incoming = JSON.parse(reader.result);
+      if(incoming.pages && incoming.order){
+        db = incoming;
+        // ensure structure safety
+        db.order = db.order.filter(id=>db.pages[id]);
+        saveDB(false);
+        renderSidebar();
+        if(db.order.length){ openPage(db.order[0]); }
+      }else if(incoming.blocks){
+        // single-page import
+        const id = uid("page"); db.pages[id] = incoming; db.pages[id].id=id; db.order.unshift(id);
+        saveDB(true); renderSidebar(); openPage(id);
+      }else{
+        alert("Unrecognized JSON schema.");
+      }
+    }catch(e){ alert("Invalid JSON."); }
+  };
+  reader.readAsText(file);
+}
+
+/* ========= Event Wiring ========= */
+window.addEventListener("keydown", (e)=>{
+  if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==="s"){ e.preventDefault(); saveDB(false); }
+  if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==="k"){ e.preventDefault(); openPalette(); }
+  if((e.ctrlKey||e.metaKey) && e.shiftKey && e.key.toLowerCase()==="f"){ e.preventDefault(); toggleFocus(); }
+});
+
+$("#newPage").onclick = ()=> newPage();
+$("#toggleSidebar").onclick = ()=> { $("#sidebar").classList.toggle("open"); };
+const closeSidebarOnMobile = ()=> $("#sidebar").classList.remove("open");
+
+$("#exportMD").onclick = exportMarkdown;
+$("#exportJSON").onclick = exportJSON;
+$("#importJSON").onchange = (e)=> e.target.files[0] && importJSON(e.target.files[0]);
+$("#pageSearch").oninput = ()=> renderSidebar();
+$("#cmd").onclick = openPalette;
+$("#palette").addEventListener("click", (e)=>{ if(e.target.id==="palette") closePalette(); });
+$("#palInput").addEventListener("input", (e)=> renderPalList(e.target.value));
+$("#focus").onclick = toggleFocus;
+
+$("#pageTitle").addEventListener("input", ()=>{
+  const p = db.pages[currentId]; if(!p) return;
+  p.title = $("#pageTitle").textContent.trim(); p.updatedAt=nowISO(); markDirty(); saveDB(true); renderSidebar(); scheduleSnapshot(); refreshBacklinks();
+});
+$("#pageIcon").addEventListener("input", ()=>{
+  const p = db.pages[currentId]; if(!p) return;
+  p.icon = ($("#pageIcon").textContent || DEFAULT_PAGE_ICON).trim().slice(0,2);
+  p.updatedAt=nowISO(); markDirty(); saveDB(true); renderSidebar();
+});
+
+/* Quick capture FAB: new page + prompt for first line */
+$("#fab").onclick = ()=>{
+  const idea = prompt("Quick capture — first note line:");
+  const id = uid("page");
+  db.pages[id] = { id, title:(idea?idea.slice(0,48):"Quick Capture") , icon:"⚡", createdAt:nowISO(), updatedAt:nowISO(),
+                   history:[], blocks:[ b("h1", idea||"Quick Capture"), b("paragraph","") ] };
+  db.order.unshift(id); saveDB(true); renderSidebar(); openPage(id);
+};
+
+/* Templates */
+$("#templates").addEventListener("click", (e)=>{
+  const el = e.target.closest("[data-template]"); if(!el) return;
+  const t = el.dataset.template;
+  const map = {
+    journal: { icon:"📓", title:`Journal — ${new Date().toLocaleDateString()}`, blocks:[
+      b("h1","Daily Journal"),
+      b("paragraph","Mood: "),
+      b("divider",""),
+      b("h2","Highlights"),
+      b("bulleted",""),
+      b("bulleted",""),
+      b("h2","Gratitude"),
+      b("bulleted",""),
+      b("h2","Lessons"),
+      b("bulleted",""),
+    ]},
+    meeting: { icon:"🗒️", title:"Meeting Notes", blocks:[
+      b("h1","Meeting Notes"),
+      b("paragraph","When:  "),
+      b("paragraph","Attendees:  "),
+      b("divider",""),
+      b("h2","Agenda"),
+      b("bulleted",""),
+      b("h2","Decisions"),
+      b("bulleted",""),
+      b("h2","Action Items"),
+      b("todo",""),
+      b("todo",""),
+    ]},
+    brief: { icon:"🧩", title:"Project Brief", blocks:[
+      b("h1","Project Brief"),
+      b("paragraph","Owner:  "),
+      b("paragraph","Status:  "),
+      b("divider",""),
+      b("h2","Overview"),
+      b("paragraph",""),
+      b("h2","Goals"),
+      b("bulleted",""),
+      b("h2","Risks"),
+      b("bulleted",""),
+      b("h2","Milestones"),
+      b("bulleted",""),
+    ]},
+  };
+  newPage(map[t]);
+});
+
+/* ========= Boot ========= */
+loadDB();
+renderSidebar();
+if(db.order.length){ openPage(db.order[0]); }
+
+/* ========= Minor Upgrades ========= */
+/* Click outside slash menu closes it — already handled with {once:true} */
+/* Accessibility tweaks */
+$("#editor").addEventListener("click", ()=> closeSlashMenu());
+
+/* ========= End ========= */
+</script>
+</body>
+</html>
